@@ -18,5 +18,9 @@
     "babel-jest": "^26.1.0",
     "jest": "^26.1.0",
     "prettier": "^2.0.5"
+  },
+  "peerDependencies": {
+    "@babel/core": "^7.0.0",
+    "@babel/preset-react": "^7.0.0"
   }
 }
