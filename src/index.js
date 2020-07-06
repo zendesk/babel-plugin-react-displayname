@@ -1,3 +1,4 @@
+const { declare } = require('@babel/helper-plugin-utils');
 // remember to set `cacheDirectory` to `false` when modifying this plugin
 
 // Name of functions that generate react components
@@ -10,7 +11,10 @@ const ALLOWED_CALLEES = new Set([
 
 const seenDisplayNames = new Set();
 
-module.exports = function transform({ types }) {
+module.exports = declare((api) => {
+  api.assertVersion(7);
+
+  const types = api.types;
   return {
     name: '@zendesk/babel-plugin-react-displayname',
     visitor: {
@@ -33,7 +37,7 @@ module.exports = function transform({ types }) {
       },
     },
   };
-};
+});
 
 /**
  * Checks if this function returns JSX nodes.
