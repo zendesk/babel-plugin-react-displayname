@@ -1,18 +1,24 @@
 const { declare } = require('@babel/helper-plugin-utils');
 // remember to set `cacheDirectory` to `false` when modifying this plugin
 
-// Name of functions that generate react components
-const ALLOWED_CALLEES = new Set([
-  'createComponent',
-  'createComponentWithProxy',
-  'createDirectionalComponent',
-  'createDirectionalComponentWithProxy',
-]);
+const DEFAULT_ALLOWED_CALLEES = {
+  react: ['createContext'],
+};
 
+const calleeModuleMapping = new Map(); // Mapping of callee name to module name
 const seenDisplayNames = new Set();
 
-module.exports = declare((api) => {
+module.exports = declare((api, options) => {
   api.assertVersion(7);
+
+  calleeModuleMapping.clear();
+  Object.entries(options.allowedCallees || DEFAULT_ALLOWED_CALLEES).forEach(
+    ([moduleName, methodNames]) => {
+      methodNames.forEach((methodName) => {
+        calleeModuleMapping.set(methodName, moduleName);
+      });
+    }
+  );
 
   const types = api.types;
   return {
@@ -29,9 +35,7 @@ module.exports = declare((api) => {
         }
       },
       CallExpression(path) {
-        const callee = path.node.callee;
-
-        if (types.isIdentifier(callee) && ALLOWED_CALLEES.has(callee.name)) {
+        if (isAllowedCallExpression(types, path)) {
           addDisplayNamesToFunctionComponent(types, path);
         }
       },
@@ -85,6 +89,41 @@ function doesReturnJSX(types, node) {
  */
 function isJSX(types, node) {
   return types.isJSXElement(node) || types.isJSXFragment(node);
+}
+
+/**
+ * Checks if this path is an allowed CallExpression.
+ *
+ * @param {Types} types content of @babel/types package
+ * @param {Path} path path of callee
+ */
+function isAllowedCallExpression(types, path) {
+  const callee = path.node.callee;
+  const calleeName = callee.name || (callee.property && callee.property.name);
+  const moduleName = calleeModuleMapping.get(calleeName);
+
+  if (!moduleName) {
+    return false;
+  }
+
+  // If the callee is an identifier expression, then check if it matches
+  // a named import, e.g. `import {createContext} from 'react'`.
+  if (types.isIdentifier(callee)) {
+    const callee = path.get('callee');
+    return callee.referencesImport(moduleName, calleeName);
+  }
+
+  // Otherwise, check if the member expression's object matches
+  // a default import (e.g. `import React from 'react'`)
+  // or namespace import (e.g. `import * as React from 'react')
+  if (types.isMemberExpression(callee)) {
+    const object = path.get('callee.object');
+    return (
+      object.referencesImport(moduleName, 'default') || object.referencesImport(moduleName, '*')
+    );
+  }
+
+  return false;
 }
 
 /**

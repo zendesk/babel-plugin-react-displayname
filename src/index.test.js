@@ -3,13 +3,21 @@ import { transformSync } from '@babel/core';
 
 const plugin = path.join(__dirname, './index.js');
 
-const transform = (code) =>
+const transform = (code, pluginOptions) =>
   transformSync(code, {
     babelrc: false,
     configFile: false,
-    plugins: [[plugin]],
+    plugins: [[plugin, pluginOptions]],
     presets: [['@babel/preset-react', { pure: false }]],
   }).code;
+
+// transform with prefilled options
+const transformWithOptions = (code) =>
+  transform(code, {
+    allowedCallees: {
+      'react-fela': ['createComponent', 'createComponentWithProxy'],
+    },
+  });
 
 describe('babelDisplayNamePlugin', () => {
   it('should add display name to function expression components', () => {
@@ -179,39 +187,90 @@ describe('babelDisplayNamePlugin', () => {
   it('should add display name to allowed call expressions', () => {
     expect(
       transform(`
-      foo.bar = createComponent();
-      foo.bar1 = createComponentWithProxy();
-      foo.bar2 = createDirectionalComponent();
-      foo.bar3 = createDirectionalComponentWithProxy();
+      import { createContext } from 'react';
+      const FeatureContext = createContext();
       `)
     ).toMatchInlineSnapshot(`
-      "foo.bar = createComponent();
-      foo.bar.displayName = \\"foo.bar\\";
-      foo.bar1 = createComponentWithProxy();
-      foo.bar1.displayName = \\"foo.bar1\\";
-      foo.bar2 = createDirectionalComponent();
-      foo.bar2.displayName = \\"foo.bar2\\";
-      foo.bar3 = createDirectionalComponentWithProxy();
-      foo.bar3.displayName = \\"foo.bar3\\";"
+      "import { createContext } from 'react';
+      const FeatureContext = createContext();
+      FeatureContext.displayName = \\"FeatureContext\\";"
     `);
 
     expect(
       transform(`
+      import React from 'react';
+      const FeatureContext = React.createContext();
+      `)
+    ).toMatchInlineSnapshot(`
+      "import React from 'react';
+      const FeatureContext = React.createContext();
+      FeatureContext.displayName = \\"FeatureContext\\";"
+    `);
+
+    expect(
+      transform(`
+      import * as React from 'react';
+      const FeatureContext = React.createContext();
+      `)
+    ).toMatchInlineSnapshot(`
+      "import * as React from 'react';
+      const FeatureContext = React.createContext();
+      FeatureContext.displayName = \\"FeatureContext\\";"
+    `);
+
+    expect(
+      transform(
+        `
+      import React from 'path/to/react';
+      const FeatureContext = React.createContext();
+      `,
+        {
+          allowedCallees: {
+            'path/to/react': ['createContext'],
+          },
+        }
+      )
+    ).toMatchInlineSnapshot(`
+      "import React from 'path/to/react';
+      const FeatureContext = React.createContext();
+      FeatureContext.displayName = \\"FeatureContext\\";"
+    `);
+
+    expect(
+      transformWithOptions(`
+      import { createComponent, createComponentWithProxy } from 'react-fela';
+      foo.bar = createComponent();
+      foo.bar1 = createComponentWithProxy();
+      `)
+    ).toMatchInlineSnapshot(`
+      "import { createComponent, createComponentWithProxy } from 'react-fela';
+      foo.bar = createComponent();
+      foo.bar.displayName = \\"foo.bar\\";
+      foo.bar1 = createComponentWithProxy();
+      foo.bar1.displayName = \\"foo.bar1\\";"
+    `);
+
+    expect(
+      transformWithOptions(`
+      import { createComponent } from 'react-fela';
       foo = { bar: createComponent() }
       `)
     ).toMatchInlineSnapshot(`
-      "foo = {
+      "import { createComponent } from 'react-fela';
+      foo = {
         bar: createComponent()
       };
       foo.bar.displayName = \\"foo.bar\\";"
     `);
 
     expect(
-      transform(`
+      transformWithOptions(`
+      import { createComponent } from 'react-fela';
       const Test = createComponent();
       `)
     ).toMatchInlineSnapshot(`
-      "const Test = createComponent();
+      "import { createComponent } from 'react-fela';
+      const Test = createComponent();
       Test.displayName = \\"Test\\";"
     `);
   });
@@ -401,19 +460,19 @@ describe('babelDisplayNamePlugin', () => {
 
   it('should not add display names for nameless functions', () => {
     expect(
-      transform(`
+      transformWithOptions(`
       export default () => <img/>
       `)
     ).toMatchInlineSnapshot(`"export default (() => React.createElement(\\"img\\", null));"`);
 
     expect(
-      transform(`
+      transformWithOptions(`
       (() => <img/>)()
       `)
     ).toMatchInlineSnapshot(`"(() => React.createElement(\\"img\\", null))();"`);
 
     expect(
-      transform(`
+      transformWithOptions(`
       {() => <img/>}
       `)
     ).toMatchInlineSnapshot(`
@@ -423,7 +482,7 @@ describe('babelDisplayNamePlugin', () => {
     `);
 
     expect(
-      transform(`
+      transformWithOptions(`
       (function() { return <img/> })()
       `)
     ).toMatchInlineSnapshot(`
@@ -433,7 +492,7 @@ describe('babelDisplayNamePlugin', () => {
     `);
 
     expect(
-      transform(`
+      transformWithOptions(`
       (function test() { return <img/> })()
       `)
     ).toMatchInlineSnapshot(`
@@ -443,7 +502,7 @@ describe('babelDisplayNamePlugin', () => {
     `);
 
     expect(
-      transform(`
+      transformWithOptions(`
       export default function() { return <img/> }
       `)
     ).toMatchInlineSnapshot(`
@@ -455,7 +514,7 @@ describe('babelDisplayNamePlugin', () => {
 
   it('should not move elements out of their current scope', () => {
     expect(
-      transform(`
+      transformWithOptions(`
       const Component = (props) => <>{() => <img {...props} />}</>;
       `)
     ).toMatchInlineSnapshot(`
@@ -465,7 +524,7 @@ describe('babelDisplayNamePlugin', () => {
     `);
 
     expect(
-      transform(`
+      transformWithOptions(`
       styledComponents.withTheme = (Component) => {
         const WithDefaultTheme = (props) => {
           return <div {...props} />;
@@ -485,7 +544,7 @@ describe('babelDisplayNamePlugin', () => {
     `);
 
     expect(
-      transform(`
+      transformWithOptions(`
       const Component = (options) => {
         return {
           test: function test(props) {
@@ -505,7 +564,7 @@ describe('babelDisplayNamePlugin', () => {
     `);
 
     expect(
-      transform(`
+      transformWithOptions(`
       const Component = (props) => ({ test: <img {...props} /> });
       `)
     ).toMatchInlineSnapshot(`
@@ -515,7 +574,7 @@ describe('babelDisplayNamePlugin', () => {
     `);
 
     expect(
-      transform(`
+      transformWithOptions(`
       const Component = (props) => {
         const LookUp = ((innerProps) => ({ a: () => <img {...innerProps} /> }))(props);
         return <div>{() => LookUp.a}</div>
@@ -536,92 +595,105 @@ describe('babelDisplayNamePlugin', () => {
 
   it('should add not overwrite existing display names', () => {
     expect(
-      transform(`
-      foo.bar = createComponent();
+      transformWithOptions(`
+      foo.bar = () => <img/>;
       foo.bar.displayName = 'test';
       `)
     ).toMatchInlineSnapshot(`
-      "foo.bar = createComponent();
+      "foo.bar = () => React.createElement(\\"img\\", null);
+
       foo.bar.displayName = 'test';"
     `);
 
     expect(
-      transform(`
-      foo.bar = createComponent();
+      transformWithOptions(`
+      foo.bar = () => <img/>;
       foo.bar.displayName = 'test';
-      foo.bar = createComponent();
+      foo.bar = () => <img/>;
       `)
     ).toMatchInlineSnapshot(`
-      "foo.bar = createComponent();
+      "foo.bar = () => React.createElement(\\"img\\", null);
+
       foo.bar.displayName = 'test';
-      foo.bar = createComponent();
+
+      foo.bar = () => React.createElement(\\"img\\", null);
+
       foo.bar.displayName = \\"foo.bar\\";"
     `);
 
     expect(
-      transform(`
-      foo.bar = createComponent();
+      transformWithOptions(`
+      foo.bar = () => <img/>;
       foo.bar.displayName = 'foo.bar';
-      foo.bar = createComponent();
+      foo.bar = () => <img/>;
       `)
     ).toMatchInlineSnapshot(`
-      "foo.bar = createComponent();
+      "foo.bar = () => React.createElement(\\"img\\", null);
+
       foo.bar.displayName = 'foo.bar';
-      foo.bar = createComponent();
+
+      foo.bar = () => React.createElement(\\"img\\", null);
+
       foo.bar.displayName = \\"foo.bar\\";"
     `);
   });
 
   it('should not add duplicate display names', () => {
     expect(
-      transform(`
+      transformWithOptions(`
       () => {
-        const Test = createComponent();
+        const Test = () => <img/>;
       }
-      const Test = createComponent();
+      const Test = () => <img/>;
       `)
     ).toMatchInlineSnapshot(`
       "() => {
-        const Test = createComponent();
+        const Test = () => React.createElement(\\"img\\", null);
+
         Test.displayName = \\"Test\\";
       };
 
-      const Test = createComponent();"
+      const Test = () => React.createElement(\\"img\\", null);"
     `);
   });
 
   it('should not change assignment orders', () => {
     expect(
-      transform(`
-      foo.bar = createComponent();
-      foo.bar = createComponentWithProxy();
+      transformWithOptions(`
+      foo.bar = () => <img/>;
+      foo.bar = () => <br/>;
       `)
     ).toMatchInlineSnapshot(`
-      "foo.bar = createComponent();
+      "foo.bar = () => React.createElement(\\"img\\", null);
+
       foo.bar.displayName = \\"foo.bar\\";
-      foo.bar = createComponentWithProxy();
+
+      foo.bar = () => React.createElement(\\"br\\", null);
+
       foo.bar.displayName = \\"foo.bar\\";"
     `);
 
     expect(
-      transform(`
-      foo.bar = createComponent();
+      transformWithOptions(`
+      foo.bar = () => <img/>;
       delete foo.bar;
       `)
     ).toMatchInlineSnapshot(`
-      "foo.bar = createComponent();
+      "foo.bar = () => React.createElement(\\"img\\", null);
+
       foo.bar.displayName = \\"foo.bar\\";
       delete foo.bar;"
     `);
 
     expect(
-      transform(`
-      foo.bar = createComponent();
+      transformWithOptions(`
+      foo.bar = () => <img/>;
       function irrelvant() {};
       foo = null;
       `)
     ).toMatchInlineSnapshot(`
-      "foo.bar = createComponent();
+      "foo.bar = () => React.createElement(\\"img\\", null);
+
       foo.bar.displayName = \\"foo.bar\\";
 
       function irrelvant() {}
@@ -633,7 +705,7 @@ describe('babelDisplayNamePlugin', () => {
 
   it('should not add display name to object properties', () => {
     expect(
-      transform(`
+      transformWithOptions(`
       const Components = {
         path: {
           test: <img/>
@@ -648,7 +720,7 @@ describe('babelDisplayNamePlugin', () => {
     `);
 
     expect(
-      transform(`
+      transformWithOptions(`
       const Components = () => ({
         path: {
           test: <img/>
@@ -663,7 +735,7 @@ describe('babelDisplayNamePlugin', () => {
     `);
 
     expect(
-      transform(`
+      transformWithOptions(`
       const Components = callee({ foo: () => <img/> });
       `)
     ).toMatchInlineSnapshot(`
@@ -673,7 +745,7 @@ describe('babelDisplayNamePlugin', () => {
     `);
 
     expect(
-      transform(`
+      transformWithOptions(`
       const Components = () => <div>{() => <img/>}</div>;
       `)
     ).toMatchInlineSnapshot(`
@@ -685,7 +757,7 @@ describe('babelDisplayNamePlugin', () => {
 
   it('should not add display name to createClass', () => {
     expect(
-      transform(`
+      transformWithOptions(`
       const Component2 = _createClass(() => <img/>);
       `)
     ).toMatchInlineSnapshot(
@@ -695,7 +767,7 @@ describe('babelDisplayNamePlugin', () => {
 
   it('should not add display name to hooks', () => {
     expect(
-      transform(`
+      transformWithOptions(`
       const Component = useMemo(() => <img/>);
       `)
     ).toMatchInlineSnapshot(
@@ -705,7 +777,7 @@ describe('babelDisplayNamePlugin', () => {
 
   it('should not add display name to class components', () => {
     expect(
-      transform(`
+      transformWithOptions(`
       class Test extends React.Component {
         render() {
           return <img/>;
@@ -721,7 +793,7 @@ describe('babelDisplayNamePlugin', () => {
     `);
 
     expect(
-      transform(`
+      transformWithOptions(`
       class Test extends React.Component {
         notRender() {
           return <img/>;
@@ -737,7 +809,7 @@ describe('babelDisplayNamePlugin', () => {
     `);
 
     expect(
-      transform(`
+      transformWithOptions(`
       export class Test extends React.Component {
         render() {
           return <img/>;
@@ -753,7 +825,7 @@ describe('babelDisplayNamePlugin', () => {
     `);
 
     expect(
-      transform(`
+      transformWithOptions(`
       export default class Test extends React.Component {
         render() {
           return <img/>;
@@ -771,7 +843,7 @@ describe('babelDisplayNamePlugin', () => {
 
   it('should not add display name to function components', () => {
     expect(
-      transform(`
+      transformWithOptions(`
       function Test() {
         return <img/>;
       }`)
@@ -782,7 +854,7 @@ describe('babelDisplayNamePlugin', () => {
     `);
 
     expect(
-      transform(`
+      transformWithOptions(`
       export function Test() {
         return <img/>;
       }`)
@@ -793,7 +865,7 @@ describe('babelDisplayNamePlugin', () => {
     `);
 
     expect(
-      transform(`
+      transformWithOptions(`
       export default function Test() {
         return <img/>;
       }`)
@@ -804,7 +876,7 @@ describe('babelDisplayNamePlugin', () => {
     `);
 
     expect(
-      transform(`
+      transformWithOptions(`
       export default function() {
         return <img/>;
       }`)
@@ -815,9 +887,41 @@ describe('babelDisplayNamePlugin', () => {
     `);
   });
 
+  it('should not add display name to unknown call expressions', () => {
+    expect(
+      transformWithOptions(`
+      import { createDirectionalComponent } from 'react-fela';
+      foo.bar = createDirectionalComponent();
+      `)
+    ).toMatchInlineSnapshot(`
+      "import { createDirectionalComponent } from 'react-fela';
+      foo.bar = createDirectionalComponent();"
+    `);
+
+    expect(
+      transformWithOptions(`
+      import fela from 'react-fela';
+      foo.bar = fela.createDirectionalComponent();
+      `)
+    ).toMatchInlineSnapshot(`
+      "import fela from 'react-fela';
+      foo.bar = fela.createDirectionalComponent();"
+    `);
+
+    expect(
+      transformWithOptions(`
+      import * as fela from 'react-fela';
+      foo.bar = fela.createDirectionalComponent();
+      `)
+    ).toMatchInlineSnapshot(`
+      "import * as fela from 'react-fela';
+      foo.bar = fela.createDirectionalComponent();"
+    `);
+  });
+
   it('should not add display name to immediately invoked function expressions', () => {
     expect(
-      transform(`
+      transformWithOptions(`
       const Test = (function () {
         return <img/>;
       })()`)
@@ -828,7 +932,7 @@ describe('babelDisplayNamePlugin', () => {
     `);
 
     expect(
-      transform(`
+      transformWithOptions(`
       const Test = (function test() {
         return <img/>;
       })()`)
@@ -839,7 +943,7 @@ describe('babelDisplayNamePlugin', () => {
     `);
 
     expect(
-      transform(`
+      transformWithOptions(`
       const Test = (() => {
         return <img/>;
       })()`)
@@ -852,7 +956,7 @@ describe('babelDisplayNamePlugin', () => {
 
   it('should not add display name to functions within jsx elements', () => {
     expect(
-      transform(`
+      transformWithOptions(`
       const Test = callee(<div>{() => <img/>}</div>);
       `)
     ).toMatchInlineSnapshot(
@@ -860,7 +964,7 @@ describe('babelDisplayNamePlugin', () => {
     );
 
     expect(
-      transform(`
+      transformWithOptions(`
       const Test = () => <img foo={{ bar: () => <img/> }} />;
       `)
     ).toMatchInlineSnapshot(`
@@ -876,7 +980,7 @@ describe('babelDisplayNamePlugin', () => {
 
   it('should not add display name to non react components', () => {
     expect(
-      transform(`
+      transformWithOptions(`
       // foo.bar = createComponent();
       const Component = '';
       const Component1 = null;
@@ -909,7 +1013,7 @@ describe('babelDisplayNamePlugin', () => {
 
   it('should not add display name to other assignments', () => {
     expect(
-      transform(`
+      transformWithOptions(`
       const Component = <img/>;
       const Component1 = [<img/>];
       const Component2 = new Wrapper(<img/>);

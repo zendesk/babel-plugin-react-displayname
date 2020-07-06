@@ -2,20 +2,6 @@
 
 > Automatically generate display names for React components
 
-## Install
-
-Using npm:
-
-```sh
-npm install --save-dev @zendesk/babel-plugin-react-displayname
-```
-
-or using yarn:
-
-```sh
-yarn add @zendesk/babel-plugin-react-displayname --dev
-```
-
 ## Why use this?
 
 React dev tools infer component names from the name of the function or class that defines the component. However, it does not work when anonymous functions are used.
@@ -48,4 +34,68 @@ const Img = function () {
   return <img />;
 };
 Img.displayName = "Img";
+```
+
+## Install
+
+Using npm:
+
+```sh
+npm install --save-dev @zendesk/babel-plugin-react-displayname
+```
+
+or using yarn:
+
+```sh
+yarn add @zendesk/babel-plugin-react-displayname --dev
+```
+
+## Usage
+
+### With a configuration file (Recommended)
+
+Without options:
+```json
+{
+  "plugins": ["@zendesk/babel-plugin-react-displayname"]
+}
+```
+
+With options:
+```json
+{
+  "plugins": ["@zendesk/babel-plugin-react-displayname", {
+    "allowedCallees": {
+      "react": ["createComponent"]
+    }
+  }]
+}
+```
+
+## Options
+
+### `allowedCallees`
+
+`Object.<string, string[]>`, defaults to `{ "react": ["createContext"] }`
+
+Enables generation of displayNames for certain called functions.
+
+#### Example
+
+By default, with `allowedCallees` set to `{ "react": ["createContext"] }`:
+
+```js
+import React, { createContext } from 'react';
+const FeatureContext = createContext();
+const AnotherContext = React.createContext();
+```
+
+is transformed into:
+
+```js
+import React, { createContext } from 'react';
+const FeatureContext = createContext();
+FeatureContext.displayName = "FeatureContext";
+const AnotherContext = React.createContext();
+AnotherContext.displayName = "AnotherContext";
 ```
