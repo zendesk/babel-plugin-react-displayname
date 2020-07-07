@@ -1,5 +1,7 @@
 # @zendesk/babel-plugin-react-displayname
 
+![Jest test CI](https://github.com/zendesk/babel-plugin-react-displayname/workflows/Jest%20test%20CI/badge.svg)
+
 > Automatically generate display names for React components
 
 ## Why use this?
