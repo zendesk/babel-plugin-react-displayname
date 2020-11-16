@@ -4,6 +4,18 @@
 
 > Automatically generate display names for React components
 
+## Installation
+
+Internal usage:
+```
+yarn add @zendesk/babel-plugin-react-displayname
+```
+
+Public usage: Copy `src/index.js` to a local file
+```
+@zendesk/babel-plugin-react-displayname: "file:../path/to/file"
+```
+
 ## Why use this?
 
 React dev tools infer component names from the name of the function or class that defines the component. However, it does not work when anonymous functions are used.
